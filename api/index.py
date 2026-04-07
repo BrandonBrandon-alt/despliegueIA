@@ -6,20 +6,29 @@ import os
 
 app = FastAPI(title="API Predictor de Cólico Equino")
 
-# --- DIAGNÓSTICO TEMPORAL ---
-# ruta_modelo = os.path.join(os.path.dirname(__file__), 'HorseColic_Model.joblib')
-# modelo = joblib.load(ruta_modelo)
-
-# Simulador de modelo (para ver si arranca el servidor)
-class DummyModel:
-    def predict(self, df): return [1]
-    def predict_proba(self, df): return [[0.9, 0.1]]
-    classes_ = [1, 2]
-
-modelo = DummyModel()
+# --- CARGA DEL MODELO REAL ---
+try:
+    # Ruta absoluta mejorada para Vercel
+    base_path = os.path.dirname(__file__)
+    ruta_modelo = os.path.join(base_path, 'HorseColic_Model.joblib')
+    
+    # Cargar el modelo
+    if os.path.exists(ruta_modelo):
+        modelo = joblib.load(ruta_modelo)
+        status_modelo = "Modelo real cargado con éxito"
+    else:
+        raise FileNotFoundError(f"No se encontró el archivo en {ruta_modelo}")
+        
+except Exception as e:
+    # Si falla, mantenemos el dummy PERO avisamos claramente el error
+    class DummyModel:
+        def predict(self, df): return [1]
+        def predict_proba(self, df): return [[0.9, 0.1]]
+        classes_ = [1, 2]
+    modelo = DummyModel()
+    status_modelo = f"ERROR DE CARGA: {str(e)}"
 # ----------------------------
 
-# 2. Definir las 13 variables exactas que espera tu modelo
 class DatosCaballo(BaseModel):
     age: float
     rectal_temperature: float
@@ -38,33 +47,30 @@ class DatosCaballo(BaseModel):
 @app.get("/")
 def read_root():
     return {
-        "mensaje": "¡API de Predicción de Cólico Equino funcionando en Vercel!",
-        "documentacion": "/docs",
-        "metodo": "Usa POST en /predecir para obtener resultados"
+        "mensaje": "¡API de Predicción de Cólico Equino!",
+        "status_modelo": status_modelo,
+        "instrucciones": "Ve a /docs para probar el modelo"
     }
 
 @app.post("/predecir")
 def predecir_lesion(datos: DatosCaballo):
-    # Convertir los datos recibidos a un DataFrame con una sola fila
     df = pd.DataFrame([datos.dict()])
     
-    # Predecir usando el pipeline (que hace la limpieza y predicción automáticamente)
-    prediccion = modelo.predict(df)[0]
-    probabilidades = modelo.predict_proba(df)[0]
-    
-    # Tu modelo clasifica: 1 (Cirugía), 2 (Médico)
-    resultado = "Sí requiere cirugía (1)" if prediccion == 1 else "Tratamiento Médico (2)"
-    
-    # El índice de probabilidad puede variar según el orden de las clases (1 o 2)
-    # Por defecto scikit-learn ordena las clases de menor a mayor (1 primero, 2 segundo)
-    prob_cirugia = probabilidades[0] if modelo.classes_[0] == 1 else probabilidades[1]
-    
-    return {
-        "prediccion": int(prediccion),
-        "resultado_clinico": resultado,
-        "probabilidad_cirugia": round(float(prob_cirugia) * 100, 2)
-    }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    try:
+        prediccion = modelo.predict(df)[0]
+        probabilidades = modelo.predict_proba(df)[0]
+        
+        resultado = "Sí requiere cirugía (1)" if prediccion == 1 else "Tratamiento Médico (2)"
+        
+        # Ajuste de probabilidad
+        idx = 0 if modelo.classes_[0] == 1 else 1
+        prob_cirugia = probabilidades[idx]
+        
+        return {
+            "status_modelo": status_modelo,
+            "prediccion": int(prediccion),
+            "resultado_clinico": resultado,
+            "probabilidad_cirugia": round(float(prob_cirugia) * 100, 2)
+        }
+    except Exception as e:
+        return {"error": f"Fallo en predicción: {str(e)}", "status_modelo": status_modelo}
