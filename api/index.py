@@ -6,10 +6,18 @@ import os
 
 app = FastAPI(title="API Predictor de Cólico Equino")
 
-# 1. Cargar el modelo
-# In Vercel, the path is relative to this file inside the /api folder
-ruta_modelo = os.path.join(os.path.dirname(__file__), 'HorseColic_Model.joblib')
-modelo = joblib.load(ruta_modelo)
+# --- DIAGNÓSTICO TEMPORAL ---
+# ruta_modelo = os.path.join(os.path.dirname(__file__), 'HorseColic_Model.joblib')
+# modelo = joblib.load(ruta_modelo)
+
+# Simulador de modelo (para ver si arranca el servidor)
+class DummyModel:
+    def predict(self, df): return [1]
+    def predict_proba(self, df): return [[0.9, 0.1]]
+    classes_ = [1, 2]
+
+modelo = DummyModel()
+# ----------------------------
 
 # 2. Definir las 13 variables exactas que espera tu modelo
 class DatosCaballo(BaseModel):
